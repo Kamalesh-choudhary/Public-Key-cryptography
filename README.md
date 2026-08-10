@@ -110,13 +110,3 @@ http://localhost:5000
 | Database | SQLite (via `sqlite3`) |
 | Frontend | HTML5, CSS3, Vanilla JavaScript |
 | Fonts | Google Fonts (Rajdhani, Exo 2, Share Tech Mono) |
-
----
-
-## Academic Note
-
-This project is developed as a course-end academic project demonstrating the core concepts of Public Key Infrastructure (PKI) including:
-- Asymmetric cryptography (RSA & ECC)
-- X.509 digital certificates
-- Certificate Authority hierarchy
-- Digital signatures and verification
