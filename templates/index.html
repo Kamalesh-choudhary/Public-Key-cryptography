@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — PKI KMS{% endblock %}
+{% block breadcrumb %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">System <span>Dashboard</span></h1>
+    <p class="page-subtitle">// Cryptographic Key Management System — Real-time Overview</p>
+</div>
+
+<div class="stats-grid" id="stats-grid">
+    <div class="stat-card">
+        <div class="stat-label">Active Keys</div>
+        <div class="stat-value accent" id="stat-active-keys">—</div>
+        <div class="stat-sub">key pairs generated</div>
+    </div>
+    <div class="stat-card green">
+        <div class="stat-label">Active Certs</div>
+        <div class="stat-value green" id="stat-active-certs">—</div>
+        <div class="stat-sub">certificates issued</div>
+    </div>
+    <div class="stat-card red">
+        <div class="stat-label">Revoked</div>
+        <div class="stat-value red" id="stat-revoked">—</div>
+        <div class="stat-sub">keys + certs revoked</div>
+    </div>
+    <div class="stat-card yellow">
+        <div class="stat-label">Signed Docs</div>
+        <div class="stat-value" style="color:var(--yellow)" id="stat-docs">—</div>
+        <div class="stat-sub">documents processed</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">CA Status</div>
+        <div class="stat-value accent" id="stat-ca" style="font-size:18px;padding-top:8px;">—</div>
+        <div class="stat-sub" id="stat-ca-name">not configured</div>
+    </div>
+</div>
+
+<div class="grid-2">
+    <div class="card">
+        <div class="card-title">⌗ Recent Key Pairs</div>
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Algorithm</th>
+                    <th>Created</th>
+                </tr>
+            </thead>
+            <tbody id="recent-keys-body">
+                <tr><td colspan="3"><div class="empty-state"><div class="empty-state-text">Loading...</div></div></td></tr>
+            </tbody>
+        </table>
+        <div style="margin-top:16px;">
+            <a href="/keys" class="btn btn-secondary btn-sm">View All Keys →</a>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-title">◉ Recent Signed Documents</div>
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Document</th>
+                    <th>Algorithm</th>
+                    <th>Signed</th>
+                </tr>
+            </thead>
+            <tbody id="recent-docs-body">
+                <tr><td colspan="3"><div class="empty-state"><div class="empty-state-text">Loading...</div></div></td></tr>
+            </tbody>
+        </table>
+        <div style="margin-top:16px;">
+            <a href="/signing" class="btn btn-secondary btn-sm">View All Documents →</a>
+        </div>
+    </div>
+</div>
+
+<div style="margin-top:20px;" class="card">
+    <div class="card-title">◈ PKI System Architecture</div>
+    <div style="display:flex;gap:0;align-items:stretch;font-family:var(--font-mono);font-size:12px;">
+        <div style="flex:1;text-align:center;padding:20px;border:1px solid var(--border);border-radius:6px;background:rgba(0,212,255,0.05);">
+            <div style="font-size:24px;margin-bottom:8px;">🔑</div>
+            <div style="color:var(--accent);font-weight:700;margin-bottom:4px;">KEY GENERATION</div>
+            <div style="color:var(--text-muted);">RSA-2048 / RSA-4096<br>ECC P-256 / P-384</div>
+        </div>
+        <div style="display:flex;align-items:center;padding:0 12px;color:var(--accent);">→</div>
+        <div style="flex:1;text-align:center;padding:20px;border:1px solid var(--border);border-radius:6px;background:rgba(0,255,136,0.04);">
+            <div style="font-size:24px;margin-bottom:8px;">🏛️</div>
+            <div style="color:var(--green);font-weight:700;margin-bottom:4px;">ROOT CA</div>
+            <div style="color:var(--text-muted);">Self-signed Certificate<br>X.509 v3 Standard</div>
+        </div>
+        <div style="display:flex;align-items:center;padding:0 12px;color:var(--accent);">→</div>
+        <div style="flex:1;text-align:center;padding:20px;border:1px solid var(--border);border-radius:6px;background:rgba(255,214,10,0.04);">
+            <div style="font-size:24px;margin-bottom:8px;">📜</div>
+            <div style="color:var(--yellow);font-weight:700;margin-bottom:4px;">CERTIFICATES</div>
+            <div style="color:var(--text-muted);">CA-signed End Entity<br>Certificates</div>
+        </div>
+        <div style="display:flex;align-items:center;padding:0 12px;color:var(--accent);">→</div>
+        <div style="flex:1;text-align:center;padding:20px;border:1px solid var(--border);border-radius:6px;background:rgba(138,43,226,0.05);">
+            <div style="font-size:24px;margin-bottom:8px;">✍️</div>
+            <div style="color:#bf80ff;font-weight:700;margin-bottom:4px;">DOCUMENT SIGNING</div>
+            <div style="color:var(--text-muted);">SHA-256 Hash + Digital<br>Signature Verification</div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function loadDashboard() {
+    try {
+        const res = await fetch('/api/dashboard/stats');
+        const data = await res.json();
+        const s = data.stats;
+
+        document.getElementById('stat-active-keys').textContent = s.active_keys;
+        document.getElementById('stat-active-certs').textContent = s.active_certs;
+        document.getElementById('stat-revoked').textContent = s.revoked_keys + s.revoked_certs;
+        document.getElementById('stat-docs').textContent = s.total_docs;
+        document.getElementById('stat-ca').textContent = s.ca_configured ? '● ONLINE' : '○ OFFLINE';
+        document.getElementById('stat-ca-name').textContent = s.ca_configured ? s.ca_name : 'not configured';
+
+        const keysBody = document.getElementById('recent-keys-body');
+        keysBody.innerHTML = data.recent_keys.length === 0
+            ? '<tr><td colspan="3"><div class="empty-state"><div class="empty-state-icon">⌗</div><div class="empty-state-text">No keys yet</div></div></td></tr>'
+            : data.recent_keys.map(k => `
+                <tr>
+                    <td>${k.name}</td>
+                    <td><span class="badge badge-${k.algorithm.toLowerCase()}">${k.algorithm}</span></td>
+                    <td class="mono" style="color:var(--text-muted)">${new Date(k.created_at).toLocaleDateString()}</td>
+                </tr>`).join('');
+
+        const docsBody = document.getElementById('recent-docs-body');
+        docsBody.innerHTML = data.recent_docs.length === 0
+            ? '<tr><td colspan="3"><div class="empty-state"><div class="empty-state-icon">◉</div><div class="empty-state-text">No documents yet</div></div></td></tr>'
+            : data.recent_docs.map(d => `
+                <tr>
+                    <td>${d.document_name}</td>
+                    <td class="mono" style="font-size:11px;color:var(--text-muted)">${d.algorithm}</td>
+                    <td class="mono" style="color:var(--text-muted)">${new Date(d.signed_at).toLocaleDateString()}</td>
+                </tr>`).join('');
+    } catch (e) {
+        console.error(e);
+    }
+}
+loadDashboard();
+</script>
+{% endblock %}

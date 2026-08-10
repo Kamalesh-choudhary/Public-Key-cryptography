@@ -1,0 +1,340 @@
+{% extends "base.html" %}
+{% block title %}Certificate Authority — PKI KMS{% endblock %}
+{% block breadcrumb %}Certificate Authority{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">Certificate <span>Authority</span></h1>
+    <p class="page-subtitle">// Setup Root CA, Issue & Revoke X.509 Certificates</p>
+</div>
+
+<div class="tab-bar">
+    <button class="tab-btn active" onclick="switchTab('ca-setup')">◈ Root CA Setup</button>
+    <button class="tab-btn" onclick="switchTab('issue-cert')">+ Issue Certificate</button>
+    <button class="tab-btn" onclick="switchTab('cert-list')">📜 Certificates</button>
+</div>
+
+<!-- Tab: CA Setup -->
+<div class="tab-panel active" id="tab-ca-setup">
+    <div id="ca-status-bar" class="alert alert-info" style="margin-bottom:20px;">Checking CA status...</div>
+    <div class="grid-2">
+        <div class="card">
+            <div class="card-title">◈ Configure Root CA</div>
+            <div class="form-group">
+                <label class="form-label">Select Key Pair (for CA signing)</label>
+                <select id="ca-key-id" class="form-select">
+                    <option value="">Loading keys...</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">CA Common Name (CN)</label>
+                <input type="text" id="ca-cn" class="form-input" placeholder="e.g. My Root CA" value="PKI System Root CA" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Organization (O)</label>
+                <input type="text" id="ca-org" class="form-input" placeholder="e.g. University Security Lab" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Country Code (2 letters)</label>
+                <input type="text" id="ca-country" class="form-input" placeholder="US" maxlength="2" value="IN" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Validity (days)</label>
+                <input type="number" id="ca-validity" class="form-input" value="3650" min="1" />
+            </div>
+            <button class="btn btn-primary" onclick="setupCA()" id="ca-setup-btn">
+                <span>◈</span> Initialize Root CA
+            </button>
+        </div>
+
+        <div class="card">
+            <div class="card-title">◎ CA Certificate Preview</div>
+            <div id="ca-cert-preview">
+                <div class="empty-state">
+                    <div class="empty-state-icon">◈</div>
+                    <div class="empty-state-text">No CA configured yet.<br>Setup a Root CA to see details.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tab: Issue Certificate -->
+<div class="tab-panel" id="tab-issue-cert">
+    <div class="grid-2">
+        <div class="card">
+            <div class="card-title">+ Issue New Certificate</div>
+            <div class="alert alert-warn">A Root CA must be configured before issuing certificates.</div>
+            <div class="form-group">
+                <label class="form-label">Subject Key Pair</label>
+                <select id="cert-key-id" class="form-select">
+                    <option value="">Loading keys...</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Common Name (CN)</label>
+                <input type="text" id="cert-cn" class="form-input" placeholder="e.g. alice@example.com" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Organization (O)</label>
+                <input type="text" id="cert-org" class="form-input" placeholder="e.g. Security Dept" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Country Code</label>
+                <input type="text" id="cert-country" class="form-input" value="IN" maxlength="2" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Validity (days)</label>
+                <input type="number" id="cert-validity" class="form-input" value="365" min="1" />
+            </div>
+            <button class="btn btn-primary" onclick="issueCert()" id="issue-cert-btn">
+                <span>✦</span> Sign & Issue Certificate
+            </button>
+        </div>
+
+        <div class="card">
+            <div class="card-title">◎ Issued Certificate</div>
+            <div id="cert-issue-result">
+                <div class="empty-state">
+                    <div class="empty-state-icon">📜</div>
+                    <div class="empty-state-text">Issue a certificate to see it here</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tab: Certificate List -->
+<div class="tab-panel" id="tab-cert-list">
+    <div class="card">
+        <div class="card-title" style="justify-content:space-between;">
+            <span>📜 All Certificates</span>
+            <button class="btn btn-secondary btn-sm" onclick="loadCerts()">↻ Refresh</button>
+        </div>
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>CN</th>
+                    <th>Type</th>
+                    <th>Issuer</th>
+                    <th>Valid From</th>
+                    <th>Valid To</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="certs-table-body">
+                <tr><td colspan="7"><div class="empty-state"><div class="empty-state-text">Loading...</div></div></td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Cert Detail Modal -->
+<div class="modal-overlay" id="cert-modal">
+    <div class="modal">
+        <div class="modal-header">
+            <div class="modal-title">Certificate Details</div>
+            <button class="modal-close" onclick="closeModal('cert-modal')">✕</button>
+        </div>
+        <div id="cert-modal-body"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function switchTab(id) {
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-' + id).classList.add('active');
+    event.target.classList.add('active');
+    if (id === 'cert-list') loadCerts();
+}
+
+async function loadKeys() {
+    const res = await fetch('/api/keys/list');
+    const data = await res.json();
+    const activeKeys = (data.keys || []).filter(k => k.status === 'active');
+    const opts = activeKeys.length === 0
+        ? '<option value="">No active keys — generate one first</option>'
+        : activeKeys.map(k => `<option value="${k.id}">${k.name} (${k.algorithm}${k.key_size ? '-' + k.key_size : k.curve ? ' ' + k.curve : ''})</option>`).join('');
+    document.getElementById('ca-key-id').innerHTML = opts;
+    document.getElementById('cert-key-id').innerHTML = opts;
+}
+
+async function checkCAStatus() {
+    const res = await fetch('/api/ca/status');
+    const data = await res.json();
+    const bar = document.getElementById('ca-status-bar');
+    if (data.configured) {
+        bar.className = 'alert alert-success';
+        bar.innerHTML = `✓ Root CA is configured: <strong>${data.ca.common_name}</strong> — Certificate valid until ${new Date(data.certificate.valid_to).toLocaleDateString()}`;
+        showCACertPreview(data.certificate);
+    } else {
+        bar.className = 'alert alert-warn';
+        bar.innerHTML = '⚠ No Root CA configured. Initialize one below to start issuing certificates.';
+    }
+}
+
+function showCACertPreview(cert) {
+    document.getElementById('ca-cert-preview').innerHTML = `
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
+            <span class="badge badge-ca">ROOT CA</span>
+            <span class="badge badge-active">Active</span>
+        </div>
+        <table style="width:100%;font-family:var(--font-mono);font-size:11px;">
+            ${[
+                ['Subject', cert.common_name],
+                ['Organization', cert.organization || '—'],
+                ['Country', cert.country || '—'],
+                ['Serial', cert.serial_number ? cert.serial_number.substring(0,16) + '...' : '—'],
+                ['Valid From', new Date(cert.valid_from).toLocaleDateString()],
+                ['Valid To', new Date(cert.valid_to).toLocaleDateString()],
+            ].map(([l,v]) => `<tr><td style="color:var(--text-muted);padding:4px 0;width:110px">${l}</td><td style="color:var(--text-primary)">${v}</td></tr>`).join('')}
+        </table>
+        <div style="margin-top:16px;">
+            <div class="code-block-header">
+                <span class="code-label">CA Certificate (PEM)</span>
+                <button class="btn btn-secondary btn-sm" onclick="copyToClipboard(\`${cert.certificate_pem}\`, 'CA Certificate')">Copy</button>
+            </div>
+            <div class="code-block" style="font-size:10px;">${cert.certificate_pem}</div>
+        </div>
+    `;
+}
+
+async function setupCA() {
+    const btn = document.getElementById('ca-setup-btn');
+    btn.classList.add('btn-loading'); btn.disabled = true;
+    try {
+        const res = await fetch('/api/ca/setup', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                key_id: parseInt(document.getElementById('ca-key-id').value),
+                common_name: document.getElementById('ca-cn').value,
+                organization: document.getElementById('ca-org').value,
+                country: document.getElementById('ca-country').value,
+                validity_days: document.getElementById('ca-validity').value
+            })
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast('Root CA initialized!', 'success');
+            checkCAStatus();
+        } else {
+            showToast(data.error || 'CA setup failed', 'error');
+        }
+    } catch (e) { showToast('Error: ' + e.message, 'error'); }
+    btn.classList.remove('btn-loading'); btn.disabled = false;
+}
+
+async function issueCert() {
+    const btn = document.getElementById('issue-cert-btn');
+    btn.classList.add('btn-loading'); btn.disabled = true;
+    try {
+        const res = await fetch('/api/ca/sign-csr', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                subject_key_id: parseInt(document.getElementById('cert-key-id').value),
+                common_name: document.getElementById('cert-cn').value,
+                organization: document.getElementById('cert-org').value,
+                country: document.getElementById('cert-country').value,
+                validity_days: document.getElementById('cert-validity').value
+            })
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast('Certificate issued!', 'success');
+            document.getElementById('cert-issue-result').innerHTML = `
+                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
+                    <span class="badge badge-active">✓ Issued</span>
+                </div>
+                <table style="width:100%;font-family:var(--font-mono);font-size:11px;">
+                    ${[
+                        ['Subject', data.common_name],
+                        ['Issuer', data.issuer],
+                        ['Serial', data.serial_number.substring(0,16) + '...'],
+                        ['Valid From', new Date(data.valid_from).toLocaleDateString()],
+                        ['Valid To', new Date(data.valid_to).toLocaleDateString()],
+                    ].map(([l,v]) => `<tr><td style="color:var(--text-muted);padding:4px 0;width:110px">${l}</td><td style="color:var(--text-primary)">${v}</td></tr>`).join('')}
+                </table>
+                <div style="margin-top:14px;">
+                    <div class="code-block-header"><span class="code-label">Certificate PEM</span>
+                        <button class="btn btn-secondary btn-sm" onclick="copyToClipboard(\`${data.certificate_pem}\`, 'Certificate')">Copy</button>
+                    </div>
+                    <div class="code-block" style="font-size:10px;">${data.certificate_pem}</div>
+                </div>
+            `;
+        } else {
+            showToast(data.error || 'Failed', 'error');
+        }
+    } catch (e) { showToast('Error: ' + e.message, 'error'); }
+    btn.classList.remove('btn-loading'); btn.disabled = false;
+}
+
+async function loadCerts() {
+    const res = await fetch('/api/ca/certificates');
+    const data = await res.json();
+    const body = document.getElementById('certs-table-body');
+    if (!data.certificates || data.certificates.length === 0) {
+        body.innerHTML = '<tr><td colspan="7"><div class="empty-state"><div class="empty-state-icon">📜</div><div class="empty-state-text">No certificates issued yet.</div></div></td></tr>';
+        return;
+    }
+    body.innerHTML = data.certificates.map(c => `
+        <tr>
+            <td><strong>${c.common_name}</strong></td>
+            <td><span class="badge ${c.is_ca ? 'badge-ca' : 'badge-rsa'}">${c.is_ca ? 'Root CA' : 'End Entity'}</span></td>
+            <td class="mono" style="font-size:11px;">${c.issuer}</td>
+            <td class="mono" style="color:var(--text-muted)">${new Date(c.valid_from).toLocaleDateString()}</td>
+            <td class="mono" style="color:var(--text-muted)">${new Date(c.valid_to).toLocaleDateString()}</td>
+            <td><span class="badge badge-${c.status}">${c.status}</span></td>
+            <td style="display:flex;gap:6px;">
+                <button class="btn btn-secondary btn-sm" onclick="viewCert(${c.id})">View</button>
+                ${c.status === 'active' && !c.is_ca ? `<button class="btn btn-danger btn-sm" onclick="revokeCert(${c.id})">Revoke</button>` : ''}
+            </td>
+        </tr>
+    `).join('');
+}
+
+async function viewCert(id) {
+    const res = await fetch(`/api/ca/certificates/${id}`);
+    const c = await res.json();
+    document.getElementById('cert-modal-body').innerHTML = `
+        <table style="width:100%;font-family:var(--font-mono);font-size:11px;margin-bottom:16px;">
+            ${[
+                ['Type', c.is_ca ? 'Root CA Certificate' : 'End Entity Certificate'],
+                ['Subject CN', c.common_name],
+                ['Organization', c.organization || '—'],
+                ['Country', c.country || '—'],
+                ['Issuer', c.issuer],
+                ['Serial Number', c.serial_number],
+                ['Valid From', new Date(c.valid_from).toLocaleString()],
+                ['Valid To', new Date(c.valid_to).toLocaleString()],
+                ['Status', c.status],
+            ].map(([l,v]) => `<tr><td style="color:var(--text-muted);padding:5px 0;width:130px">${l}</td><td style="color:var(--text-primary)">${v}</td></tr>`).join('')}
+        </table>
+        <div class="code-block-header"><span class="code-label">Certificate (PEM)</span>
+            <button class="btn btn-secondary btn-sm" onclick="copyToClipboard(\`${c.certificate_pem}\`, 'Certificate')">Copy</button>
+        </div>
+        <div class="code-block" style="font-size:10px;">${c.certificate_pem}</div>
+    `;
+    document.getElementById('cert-modal').classList.add('open');
+}
+
+async function revokeCert(id) {
+    if (!confirm('Revoke this certificate?')) return;
+    const res = await fetch(`/api/ca/certificates/${id}/revoke`, { method: 'POST' });
+    const data = await res.json();
+    if (data.success) { showToast('Certificate revoked', 'success'); loadCerts(); }
+    else showToast(data.error, 'error');
+}
+
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.getElementById('cert-modal').addEventListener('click', function(e) { if (e.target === this) closeModal('cert-modal'); });
+
+loadKeys();
+checkCAStatus();
+</script>
+{% endblock %}

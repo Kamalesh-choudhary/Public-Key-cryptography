@@ -1,0 +1,277 @@
+{% extends "base.html" %}
+{% block title %}Document Signing — PKI KMS{% endblock %}
+{% block breadcrumb %}Document Signing{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">Document <span>Signing</span></h1>
+    <p class="page-subtitle">// Sign & Verify Documents using PKI Digital Signatures</p>
+</div>
+
+<div class="tab-bar">
+    <button class="tab-btn active" onclick="switchTab('sign')">✍ Sign Document</button>
+    <button class="tab-btn" onclick="switchTab('verify')">✓ Verify Signature</button>
+    <button class="tab-btn" onclick="switchTab('history'); loadHistory()">◉ Signing History</button>
+</div>
+
+<!-- Sign Tab -->
+<div class="tab-panel active" id="tab-sign">
+    <div class="grid-2">
+        <div class="card">
+            <div class="card-title">✍ Sign a Document</div>
+            <div class="form-group">
+                <label class="form-label">Document Name</label>
+                <input type="text" id="doc-name" class="form-input" placeholder="e.g. contract.txt" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Document Content</label>
+                <textarea id="doc-content" class="form-textarea" style="min-height:160px;" placeholder="Paste or type document content here..."></textarea>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Signing Key</label>
+                <select id="sign-key-id" class="form-select">
+                    <option value="">Loading keys...</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Signer Certificate (optional)</label>
+                <select id="sign-cert-id" class="form-select">
+                    <option value="">None (key-only signing)</option>
+                </select>
+            </div>
+            <button class="btn btn-primary" onclick="signDocument()" id="sign-btn">
+                <span>✍</span> Sign Document
+            </button>
+        </div>
+
+        <div class="card">
+            <div class="card-title">◎ Signature Result</div>
+            <div id="sign-result">
+                <div class="empty-state">
+                    <div class="empty-state-icon">✍</div>
+                    <div class="empty-state-text">Sign a document to see the digital signature here</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Verify Tab -->
+<div class="tab-panel" id="tab-verify">
+    <div class="grid-2">
+        <div class="card">
+            <div class="card-title">✓ Verify Signature</div>
+            <div class="alert alert-info">Enter the original document content and its signature to verify authenticity.</div>
+            <div class="form-group">
+                <label class="form-label">Document Content</label>
+                <textarea id="verify-content" class="form-textarea" style="min-height:160px;" placeholder="Paste the original document content..."></textarea>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Digital Signature (Base64)</label>
+                <textarea id="verify-sig" class="form-textarea" style="min-height:80px;" placeholder="Paste the Base64 signature here..."></textarea>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Verification Key (Public Key)</label>
+                <select id="verify-key-id" class="form-select">
+                    <option value="">Loading keys...</option>
+                </select>
+            </div>
+            <button class="btn btn-success" onclick="verifyDocument()" id="verify-btn">
+                <span>✓</span> Verify Signature
+            </button>
+        </div>
+
+        <div class="card">
+            <div class="card-title">◎ Verification Result</div>
+            <div id="verify-result">
+                <div class="empty-state">
+                    <div class="empty-state-icon">✓</div>
+                    <div class="empty-state-text">Submit a signature to verify</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- History Tab -->
+<div class="tab-panel" id="tab-history">
+    <div class="card">
+        <div class="card-title" style="justify-content:space-between;">
+            <span>◉ Document Signing History</span>
+            <button class="btn btn-secondary btn-sm" onclick="loadHistory()">↻ Refresh</button>
+        </div>
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Document</th>
+                    <th>Algorithm</th>
+                    <th>Signer</th>
+                    <th>Certificate</th>
+                    <th>Verified</th>
+                    <th>Signed At</th>
+                    <th>Hash (SHA-256)</th>
+                </tr>
+            </thead>
+            <tbody id="history-table-body">
+                <tr><td colspan="7"><div class="empty-state"><div class="empty-state-text">Loading...</div></div></td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function switchTab(id) {
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-' + id).classList.add('active');
+    event.target.classList.add('active');
+}
+
+async function loadDropdowns() {
+    const kRes = await fetch('/api/keys/list');
+    const kData = await kRes.json();
+    const activeKeys = (kData.keys || []).filter(k => k.status === 'active');
+    const keyOpts = activeKeys.length === 0
+        ? '<option value="">No active keys</option>'
+        : activeKeys.map(k => `<option value="${k.id}">${k.name} (${k.algorithm})</option>`).join('');
+    document.getElementById('sign-key-id').innerHTML = keyOpts;
+    document.getElementById('verify-key-id').innerHTML = keyOpts;
+
+    const cRes = await fetch('/api/ca/certificates');
+    const cData = await cRes.json();
+    const activeCerts = (cData.certificates || []).filter(c => c.status === 'active' && !c.is_ca);
+    const certOpts = '<option value="">None (key-only signing)</option>' +
+        activeCerts.map(c => `<option value="${c.id}">${c.common_name}</option>`).join('');
+    document.getElementById('sign-cert-id').innerHTML = certOpts;
+}
+
+let lastSignature = null;
+let lastDocContent = null;
+
+async function signDocument() {
+    const btn = document.getElementById('sign-btn');
+    btn.classList.add('btn-loading'); btn.disabled = true;
+
+    const docContent = document.getElementById('doc-content').value.trim();
+    const docName = document.getElementById('doc-name').value.trim() || 'document.txt';
+    const keyId = document.getElementById('sign-key-id').value;
+    const certId = document.getElementById('sign-cert-id').value || null;
+
+    if (!docContent) { showToast('Document content is required', 'error'); btn.classList.remove('btn-loading'); btn.disabled = false; return; }
+    if (!keyId) { showToast('Please select a signing key', 'error'); btn.classList.remove('btn-loading'); btn.disabled = false; return; }
+
+    try {
+        const res = await fetch('/api/sign/sign', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ document_content: docContent, document_name: docName, key_id: parseInt(keyId), cert_id: certId ? parseInt(certId) : null })
+        });
+        const data = await res.json();
+
+        if (data.success) {
+            lastSignature = data.signature;
+            lastDocContent = docContent;
+            showToast('Document signed successfully!', 'success');
+            document.getElementById('sign-result').innerHTML = `
+                <div class="alert alert-success">✓ Document signed successfully</div>
+                <table style="width:100%;font-family:var(--font-mono);font-size:11px;margin-bottom:16px;">
+                    ${[
+                        ['Document', data.document_name],
+                        ['Algorithm', data.algorithm],
+                        ['SHA-256 Hash', data.document_hash.substring(0,32) + '...'],
+                    ].map(([l,v]) => `<tr><td style="color:var(--text-muted);padding:4px 0;width:110px">${l}</td><td style="color:var(--text-primary)">${v}</td></tr>`).join('')}
+                </table>
+                <div class="code-block-header">
+                    <span class="code-label">Digital Signature (Base64)</span>
+                    <button class="btn btn-secondary btn-sm" onclick="copyToClipboard(\`${data.signature}\`, 'Signature')">Copy</button>
+                </div>
+                <div class="code-block" style="font-size:10px;word-break:break-all;">${data.signature}</div>
+                <div style="margin-top:12px;">
+                    <button class="btn btn-secondary btn-sm" onclick="prefillVerify()">→ Verify This Signature</button>
+                </div>
+            `;
+        } else {
+            showToast(data.error || 'Signing failed', 'error');
+        }
+    } catch (e) { showToast('Error: ' + e.message, 'error'); }
+    btn.classList.remove('btn-loading'); btn.disabled = false;
+}
+
+function prefillVerify() {
+    document.getElementById('verify-content').value = lastDocContent || '';
+    document.getElementById('verify-sig').value = lastSignature || '';
+    // Switch to verify tab
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-verify').classList.add('active');
+    document.querySelectorAll('.tab-btn')[1].classList.add('active');
+}
+
+async function verifyDocument() {
+    const btn = document.getElementById('verify-btn');
+    btn.classList.add('btn-loading'); btn.disabled = true;
+
+    const docContent = document.getElementById('verify-content').value.trim();
+    const signature = document.getElementById('verify-sig').value.trim();
+    const keyId = document.getElementById('verify-key-id').value;
+
+    if (!docContent || !signature || !keyId) {
+        showToast('All fields are required', 'error');
+        btn.classList.remove('btn-loading'); btn.disabled = false; return;
+    }
+
+    try {
+        const res = await fetch('/api/sign/verify', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ document_content: docContent, signature, key_id: parseInt(keyId) })
+        });
+        const data = await res.json();
+
+        const isValid = data.verified;
+        document.getElementById('verify-result').innerHTML = `
+            <div class="alert ${isValid ? 'alert-success' : 'alert-error'}" style="font-size:16px;text-align:center;padding:20px;">
+                ${isValid ? '✓ SIGNATURE VALID' : '✗ SIGNATURE INVALID'}
+            </div>
+            <div style="text-align:center;margin:16px 0;">
+                <div style="font-size:48px;">${isValid ? '🔒' : '🔓'}</div>
+                <div style="font-family:var(--font-mono);font-size:12px;color:${isValid ? 'var(--green)' : 'var(--red)'};margin-top:8px;">
+                    ${isValid ? 'The document has NOT been tampered with.' : 'The document may have been tampered with or the wrong key was used.'}
+                </div>
+            </div>
+            <table style="width:100%;font-family:var(--font-mono);font-size:11px;">
+                <tr><td style="color:var(--text-muted);padding:4px 0;width:120px">Verification</td><td style="color:${isValid ? 'var(--green)' : 'var(--red)'}">${data.message}</td></tr>
+                <tr><td style="color:var(--text-muted)">SHA-256 Hash</td><td style="color:var(--text-primary)">${data.document_hash ? data.document_hash.substring(0,32) + '...' : '—'}</td></tr>
+            </table>
+        `;
+        showToast(data.message, isValid ? 'success' : 'error');
+    } catch (e) { showToast('Error: ' + e.message, 'error'); }
+    btn.classList.remove('btn-loading'); btn.disabled = false;
+}
+
+async function loadHistory() {
+    const res = await fetch('/api/sign/documents');
+    const data = await res.json();
+    const body = document.getElementById('history-table-body');
+    if (!data.documents || data.documents.length === 0) {
+        body.innerHTML = '<tr><td colspan="7"><div class="empty-state"><div class="empty-state-icon">◉</div><div class="empty-state-text">No signed documents yet.</div></div></td></tr>';
+        return;
+    }
+    body.innerHTML = data.documents.map(d => `
+        <tr>
+            <td><strong>${d.document_name}</strong></td>
+            <td class="mono" style="font-size:11px;color:var(--text-muted)">${d.algorithm}</td>
+            <td>${d.signer_name || '—'}</td>
+            <td>${d.cert_cn || '<span style="color:var(--text-muted)">—</span>'}</td>
+            <td><span class="badge ${d.verified ? 'badge-active' : 'badge-revoked'}">${d.verified ? '✓ Verified' : '? Unverified'}</span></td>
+            <td class="mono" style="color:var(--text-muted)">${new Date(d.signed_at).toLocaleString()}</td>
+            <td class="mono" style="font-size:10px;color:var(--text-muted)">${d.document_hash.substring(0,16)}...</td>
+        </tr>
+    `).join('');
+}
+
+loadDropdowns();
+</script>
+{% endblock %}

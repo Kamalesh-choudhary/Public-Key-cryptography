@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}PKI Key Management System{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;400;500;600;700&family=Exo+2:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/main.css">
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <div class="scan-line"></div>
+    <div class="grid-bg"></div>
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <div class="logo-icon">
+                <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M20 2L4 9V21C4 29.8 11.2 38.1 20 40C28.8 38.1 36 29.8 36 21V9L20 2Z" stroke="var(--accent)" stroke-width="2" fill="none"/>
+                    <circle cx="20" cy="18" r="5" stroke="var(--accent)" stroke-width="1.5" fill="none"/>
+                    <path d="M20 23V30" stroke="var(--accent)" stroke-width="2"/>
+                    <path d="M17 30H23" stroke="var(--accent)" stroke-width="2"/>
+                </svg>
+            </div>
+            <div class="logo-text">
+                <span class="logo-title">PKI<span class="accent">SEC</span></span>
+                <span class="logo-sub">Key Management System</span>
+            </div>
+        </div>
+
+        <nav class="nav-menu">
+            <a href="/" class="nav-item {% if request.path == '/' %}active{% endif %}">
+                <span class="nav-icon">⬡</span>
+                <span>Dashboard</span>
+            </a>
+            <a href="/keys" class="nav-item {% if request.path == '/keys' %}active{% endif %}">
+                <span class="nav-icon">⌗</span>
+                <span>Key Management</span>
+            </a>
+            <a href="/ca" class="nav-item {% if request.path == '/ca' %}active{% endif %}">
+                <span class="nav-icon">◈</span>
+                <span>Certificate Authority</span>
+            </a>
+            <a href="/signing" class="nav-item {% if request.path == '/signing' %}active{% endif %}">
+                <span class="nav-icon">◉</span>
+                <span>Document Signing</span>
+            </a>
+        </nav>
+
+        <div class="sidebar-footer">
+            <div class="status-indicator">
+                <span class="status-dot"></span>
+                <span>System Operational</span>
+            </div>
+            <div class="version-tag">v1.0.0 — Academic Build</div>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <header class="top-bar">
+            <div class="page-breadcrumb">
+                <span class="breadcrumb-root">PKI</span>
+                <span class="breadcrumb-sep">›</span>
+                <span class="breadcrumb-current">{% block breadcrumb %}Dashboard{% endblock %}</span>
+            </div>
+            <div class="top-bar-right">
+                <div class="time-display" id="live-time"></div>
+                <div class="badge-secure">🔒 SECURE MODE</div>
+            </div>
+        </header>
+
+        <div class="content-area">
+            {% block content %}{% endblock %}
+        </div>
+    </main>
+
+    <div id="toast-container"></div>
+
+    <script>
+        // Live clock
+        function updateTime() {
+            const el = document.getElementById('live-time');
+            if (el) el.textContent = new Date().toLocaleTimeString();
+        }
+        setInterval(updateTime, 1000);
+        updateTime();
+
+        // Toast notifications
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            toast.innerHTML = `<span>${type === 'success' ? '✓' : '✗'}</span> ${message}`;
+            container.appendChild(toast);
+            setTimeout(() => toast.classList.add('show'), 10);
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => toast.remove(), 400);
+            }, 3500);
+        }
+
+        // Copy to clipboard
+        function copyToClipboard(text, label = 'Copied') {
+            navigator.clipboard.writeText(text).then(() => showToast(`${label} to clipboard`));
+        }
+    </script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

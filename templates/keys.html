@@ -1,0 +1,232 @@
+{% extends "base.html" %}
+{% block title %}Key Management — PKI KMS{% endblock %}
+{% block breadcrumb %}Key Management{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">Key <span>Management</span></h1>
+    <p class="page-subtitle">// Generate & Manage RSA and ECC Cryptographic Key Pairs</p>
+</div>
+
+<div class="grid-2" style="margin-bottom:24px;">
+    <!-- Generate Key Form -->
+    <div class="card">
+        <div class="card-title">⌗ Generate New Key Pair</div>
+        <div class="form-group">
+            <label class="form-label">Key Name / Label</label>
+            <input type="text" id="key-name" class="form-input" placeholder="e.g. Alice's Signing Key" />
+        </div>
+        <div class="form-group">
+            <label class="form-label">Algorithm</label>
+            <select id="key-algo" class="form-select" onchange="toggleAlgoOptions()">
+                <option value="RSA">RSA — Rivest–Shamir–Adleman</option>
+                <option value="ECC">ECC — Elliptic Curve Cryptography</option>
+            </select>
+        </div>
+        <div id="rsa-options">
+            <div class="form-group">
+                <label class="form-label">Key Size (bits)</label>
+                <select id="rsa-size" class="form-select">
+                    <option value="2048">2048-bit (Recommended)</option>
+                    <option value="4096">4096-bit (High Security)</option>
+                </select>
+            </div>
+        </div>
+        <div id="ecc-options" style="display:none;">
+            <div class="form-group">
+                <label class="form-label">Elliptic Curve</label>
+                <select id="ecc-curve" class="form-select">
+                    <option value="P-256">P-256 (NIST / Recommended)</option>
+                    <option value="P-384">P-384 (High Security)</option>
+                    <option value="P-521">P-521 (Maximum Security)</option>
+                </select>
+            </div>
+        </div>
+        <div class="alert alert-info">
+            RSA-2048 is suitable for most use cases. ECC P-256 offers equivalent security with smaller key sizes.
+        </div>
+        <button class="btn btn-primary" onclick="generateKey()" id="gen-btn">
+            <span>⚡</span> Generate Key Pair
+        </button>
+    </div>
+
+    <!-- Last Generated Key -->
+    <div class="card">
+        <div class="card-title">◎ Last Generated Key</div>
+        <div id="gen-result">
+            <div class="empty-state">
+                <div class="empty-state-icon">⌗</div>
+                <div class="empty-state-text">Generate a key pair to see details here</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Keys Table -->
+<div class="card">
+    <div class="card-title" style="justify-content:space-between;">
+        <span>⬡ All Key Pairs</span>
+        <button class="btn btn-secondary btn-sm" onclick="loadKeys()">↻ Refresh</button>
+    </div>
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Algorithm</th>
+                <th>Size / Curve</th>
+                <th>Status</th>
+                <th>Created</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="keys-table-body">
+            <tr><td colspan="7"><div class="empty-state"><div class="empty-state-text">Loading keys...</div></div></td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- Key Detail Modal -->
+<div class="modal-overlay" id="key-modal">
+    <div class="modal">
+        <div class="modal-header">
+            <div class="modal-title">Key Details</div>
+            <button class="modal-close" onclick="closeModal('key-modal')">✕</button>
+        </div>
+        <div id="key-modal-body"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function toggleAlgoOptions() {
+    const algo = document.getElementById('key-algo').value;
+    document.getElementById('rsa-options').style.display = algo === 'RSA' ? 'block' : 'none';
+    document.getElementById('ecc-options').style.display = algo === 'ECC' ? 'block' : 'none';
+}
+
+async function generateKey() {
+    const btn = document.getElementById('gen-btn');
+    const name = document.getElementById('key-name').value.trim() || 'Unnamed Key';
+    const algo = document.getElementById('key-algo').value;
+    const keySize = document.getElementById('rsa-size').value;
+    const curve = document.getElementById('ecc-curve').value;
+
+    btn.classList.add('btn-loading');
+    btn.disabled = true;
+
+    try {
+        const res = await fetch('/api/keys/generate', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ name, algorithm: algo, key_size: keySize, curve })
+        });
+        const data = await res.json();
+
+        if (data.success) {
+            showToast(`Key pair "${name}" generated successfully!`, 'success');
+            document.getElementById('gen-result').innerHTML = `
+                <div style="margin-bottom:12px;">
+                    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
+                        <span class="badge badge-active">● Active</span>
+                        <span class="badge badge-${algo.toLowerCase()}">${algo}</span>
+                        ${data.key_size ? `<span class="badge" style="background:rgba(0,212,255,0.1);color:var(--accent);border:1px solid rgba(0,212,255,0.2)">${data.key_size}-bit</span>` : ''}
+                        ${data.curve ? `<span class="badge" style="background:rgba(255,214,10,0.1);color:var(--yellow);border:1px solid rgba(255,214,10,0.2)">${data.curve}</span>` : ''}
+                    </div>
+                    <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-muted);margin-bottom:4px;">KEY ID: #${data.key_id} — ${data.name}</div>
+                </div>
+                <div class="code-block-header">
+                    <span class="code-label">Public Key (PEM)</span>
+                    <button class="btn btn-secondary btn-sm" onclick="copyToClipboard(\`${data.public_key}\`, 'Public key')">Copy</button>
+                </div>
+                <div class="code-block" style="font-size:10px;">${data.public_key}</div>
+            `;
+            loadKeys();
+        } else {
+            showToast(data.error || 'Generation failed', 'error');
+        }
+    } catch (e) {
+        showToast('Network error: ' + e.message, 'error');
+    }
+
+    btn.classList.remove('btn-loading');
+    btn.disabled = false;
+}
+
+async function loadKeys() {
+    const res = await fetch('/api/keys/list');
+    const data = await res.json();
+    const body = document.getElementById('keys-table-body');
+
+    if (!data.keys || data.keys.length === 0) {
+        body.innerHTML = '<tr><td colspan="7"><div class="empty-state"><div class="empty-state-icon">⌗</div><div class="empty-state-text">No key pairs found. Generate your first key!</div></div></td></tr>';
+        return;
+    }
+
+    body.innerHTML = data.keys.map(k => `
+        <tr>
+            <td class="mono" style="color:var(--text-muted)">#${k.id}</td>
+            <td><strong>${k.name}</strong></td>
+            <td><span class="badge badge-${k.algorithm.toLowerCase()}">${k.algorithm}</span></td>
+            <td class="mono">${k.key_size ? k.key_size + '-bit' : k.curve || '—'}</td>
+            <td><span class="badge badge-${k.status}">${k.status}</span></td>
+            <td class="mono" style="color:var(--text-muted)">${new Date(k.created_at).toLocaleDateString()}</td>
+            <td style="display:flex;gap:6px;">
+                <button class="btn btn-secondary btn-sm" onclick="viewKey(${k.id})">View</button>
+                ${k.status === 'active' ? `<button class="btn btn-danger btn-sm" onclick="revokeKey(${k.id})">Revoke</button>` : ''}
+            </td>
+        </tr>
+    `).join('');
+}
+
+async function viewKey(id) {
+    const res = await fetch(`/api/keys/${id}`);
+    const k = await res.json();
+    document.getElementById('key-modal-body').innerHTML = `
+        <div style="margin-bottom:16px;display:flex;gap:8px;">
+            <span class="badge badge-${k.algorithm.toLowerCase()}">${k.algorithm}</span>
+            <span class="badge badge-${k.status}">${k.status}</span>
+            ${k.key_size ? `<span class="badge badge-rsa">${k.key_size}-bit</span>` : ''}
+            ${k.curve ? `<span class="badge badge-ecc">${k.curve}</span>` : ''}
+        </div>
+        <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-muted);margin-bottom:16px;">
+            ID: #${k.id} &nbsp;|&nbsp; Created: ${new Date(k.created_at).toLocaleString()}
+        </div>
+        <div class="code-block-header">
+            <span class="code-label">Public Key (PEM)</span>
+            <button class="btn btn-secondary btn-sm" onclick="copyToClipboard(\`${k.public_key}\`, 'Public key')">Copy</button>
+        </div>
+        <div class="code-block" style="font-size:10px;margin-bottom:12px;">${k.public_key}</div>
+        <div class="code-block-header">
+            <span class="code-label">Private Key (PEM)</span>
+            <button class="btn btn-secondary btn-sm" onclick="copyToClipboard(\`${k.private_key}\`, 'Private key')">Copy</button>
+        </div>
+        <div class="code-block" style="font-size:10px;">${k.private_key}</div>
+    `;
+    document.getElementById('key-modal').classList.add('open');
+}
+
+async function revokeKey(id) {
+    if (!confirm('Revoke this key? This action cannot be undone.')) return;
+    const res = await fetch(`/api/keys/${id}/delete`, { method: 'DELETE' });
+    const data = await res.json();
+    if (data.success) {
+        showToast('Key revoked successfully', 'success');
+        loadKeys();
+    } else {
+        showToast(data.error, 'error');
+    }
+}
+
+function closeModal(id) {
+    document.getElementById(id).classList.remove('open');
+}
+
+document.getElementById('key-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeModal('key-modal');
+});
+
+loadKeys();
+</script>
+{% endblock %}
