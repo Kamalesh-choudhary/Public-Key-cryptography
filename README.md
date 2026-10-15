@@ -5,7 +5,6 @@ A web-based Public Key Infrastructure (PKI) system built with Python (Flask) and
 ---
 
 **Live Demo:** https://public-key-cryptography.onrender.com
-*(Free-tier hosting — may take 30–50s to wake up if idle)*
 
 ## Features
 
