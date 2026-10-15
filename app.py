@@ -33,6 +33,10 @@ def ca_page():
 def signing_page():
     return render_template('signing.html')
 
+@app.route('/health')
+def health():
+    return {"status":"ok"}
+
 if __name__ == '__main__':
     import os
     port = int(os.environ.get('PORT', 5000))
